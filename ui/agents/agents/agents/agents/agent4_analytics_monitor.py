@@ -4,6 +4,7 @@ import urllib.request
 import urllib.error
 import sys
 import subprocess
+from datetime import datetime
 from uagents import Agent, Context, Model
 
 # ★ MeTTaの動的インポート
@@ -40,7 +41,7 @@ SUPPORTED_LANGUAGES = {
     "Vietnamese": "Tiếng Việt"
 }
 
-# ★ Ayrshare 経由で Instagram に自動投稿する関数
+# ★ Ayrshare 経由で Instagram に自動投稿する関数 (User-Agent & タイムアウト60秒対応)
 def post_to_instagram_via_ayrshare(caption: str, image_url: str, ctx: Context = None) -> dict:
     ayrshare_key = os.getenv("AYRSHARE_API_KEY", "").strip().strip('"').strip("'")
     
@@ -53,9 +54,11 @@ def post_to_instagram_via_ayrshare(caption: str, image_url: str, ctx: Context = 
         return {"status": "error", "message": "Missing API Key"}
 
     url = "https://app.ayrshare.com/api/post"
+    
     headers = {
         "Authorization": f"Bearer {ayrshare_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
     payload = {
@@ -71,7 +74,7 @@ def post_to_instagram_via_ayrshare(caption: str, image_url: str, ctx: Context = 
             headers=headers,
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=60) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             msg = f"🎉 Instagram への自動投稿が完了しました！: {res_data}"
             if ctx:
@@ -79,8 +82,16 @@ def post_to_instagram_via_ayrshare(caption: str, image_url: str, ctx: Context = 
             else:
                 print(msg)
             return res_data
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
+        msg = f"❌ Ayrshare HTTP エラー ({e.code}): {error_body}"
+        if ctx:
+            ctx.logger.error(msg)
+        else:
+            print(msg)
+        return {"status": "error", "message": error_body}
     except Exception as e:
-        msg = f"❌ Ayrshare 投稿エラー: {e}"
+        msg = f"❌ Ayrshare 予期せぬエラー: {e}"
         if ctx:
             ctx.logger.error(msg)
         else:
@@ -200,14 +211,24 @@ Tasks:
     final_analysis_text = audit_analytics_report(analysis_text, current_cpa)
     ctx.logger.info("【MeTTa 監査】アナリティクスレポートの論理検証完了。")
 
-    # ★ Instagram への自動パブリッシュ (Ayrshare 経由)
-    if msg.image_url and msg.ad_copy:
-        ctx.logger.info("Instagram への自動投稿を開始します...")
-        post_to_instagram_via_ayrshare(
-            caption=f"{msg.ad_copy}\n\n#NextFlowMarketing #AIAgent",
-            image_url=msg.image_url,
-            ctx=ctx
-        )
+    # ★ 投稿モードの切り替えフラグ (デモ時は False / 本番実投稿時は True)
+    ENABLE_LIVE_INSTAGRAM_POST = False
+
+    # ★ Instagram へのパブリッシュ制御
+    if ENABLE_LIVE_INSTAGRAM_POST:
+        if msg.image_url and msg.ad_copy:
+            ctx.logger.info("【本番モード】Instagram への自動実投稿を開始します...")
+            timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            caption_with_time = f"{msg.ad_copy}\n\n[Ref: {msg.campaign_id} | {timestamp_str}]\n#NextFlowMarketing #AIAgent"
+
+            post_to_instagram_via_ayrshare(
+                caption=caption_with_time,
+                image_url=msg.image_url,
+                ctx=ctx
+            )
+    else:
+    
+        ctx.logger.info("📱【デモ・プレビューモード】実投稿をスキップし、Bridge サーバー経由で Web 画面へ反映します。")
 
     # Bridge サーバーへ送信
     if msg.bridge_url:

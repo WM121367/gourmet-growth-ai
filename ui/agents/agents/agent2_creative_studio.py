@@ -33,13 +33,12 @@ class CreativePayload(Model):
     bridge_url: str
     iteration: int = 1
 
-# ChatProtocol / ASI:One 用テキストメッセージモデル
-class ChatMessage(Model):
-    message: str
+# ★ ASI:One / DeltaV 標準チャットモデル (text: str)
+class Message(Model):
+    text: str
 
-class ChatResponse(Model):
-    response: str
-    image_url: str = ""
+class TextResponse(Model):
+    text: str
 
 AD_DEPLOYMENT_ADDRESS = "agent1qw4umx64uk5vsk73un499l4gfgyydp5kygwlfpyw2m37e5en0ypju9lwmsf"
 
@@ -48,7 +47,7 @@ agent = Agent(
     seed="creative_studio_agentverse_seed_2026"
 )
 
-# 業態別フォールバック画像
+# 業態別フォールバック写真
 GENRE_IMAGES = {
     "tonkatsu": "https://images.unsplash.com/photo-1596797038530-2c107229654b?w=1024",
     "sushi": "https://images.unsplash.com/photo-1617196034796-73dfa7b1fd56?w=1024",
@@ -56,7 +55,7 @@ GENRE_IMAGES = {
 }
 
 # ==============================================================================
-# 🎨 共通クリエイティブ生成コアロジック (DALL-E 3 ＆ コピー)
+# 🎨 共通クリエイティブ生成コアロジック
 # ==============================================================================
 def generate_creative_assets(restaurant_name: str, genre: str, usp: str, location: str, ctx: Context) -> tuple[str, str]:
     is_tonkatsu = any(k in (restaurant_name + genre + usp).lower() for k in ["tonkatsu", "とんかつ", "カツ", "pork", "kobuta"])
@@ -69,7 +68,7 @@ def generate_creative_assets(restaurant_name: str, genre: str, usp: str, locatio
             from openai import OpenAI
             client = OpenAI(api_key=openai_key)
             dalle_prompt = (
-                f"Award-winning commercial food photography for '{restaurant_name}'. "
+                f"Award-winning professional commercial food photography for '{restaurant_name}'. "
                 f"Authentic Japanese {genre} featuring {usp}. "
                 "Crispy golden-brown raw panko crust, thick juicy pork cross section, authentic tableware, warm cinematic spotlight, 8k food advertisement."
             )
@@ -116,41 +115,36 @@ async def handle_strategy(ctx: Context, sender: str, msg: RestaurantInfo):
         iteration=1
     )
     await ctx.send(AD_DEPLOYMENT_ADDRESS, out_payload)
-    ctx.logger.info(f"✅ Agent 3 へ【画像URL: {image_url[:40]}...】を含む確定クリエイティブを送信完了！")
+    ctx.logger.info(f"✅ Agent 3 へ送信完了 (確定画像URL: {image_url})")
 
 # ==============================================================================
-# ② ★ ASI:One / DeltaV ChatProtocol ハンドラー (人間・ASI:One 対話用)
+# ② ★ ASI:One / DeltaV 標準チャットハンドラー (人間対話用)
 # ==============================================================================
-chat_proto = Protocol(name="Agent2ChatProtocol", version="1.0")
-
-@chat_proto.on_message(model=ChatMessage, replies={ChatResponse})
-async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
-    ctx.logger.info(f"💬【ASI:One チャット受信】: {msg.message}")
+@agent.on_message(model=Message, replies={TextResponse})
+async def handle_asi_message(ctx: Context, sender: str, msg: Message):
+    ctx.logger.info(f"💬【ASI:One チャット受信】: {msg.text}")
     
-    # チャット入力から簡易抽出（デフォルトはとんかつ Kobuta and Ookami）
     r_name = "Kobuta and Ookami"
     r_genre = "サクサクジューシーとんかつ Specialty"
     r_usp = "極上ロースとんかつ、特製エビフライ、黄金生パン粉"
     r_loc = "Seattle, WA"
 
-    if "sushi" in msg.message.lower() or "寿司" in msg.message:
+    if "sushi" in msg.text.lower() or "寿司" in msg.text:
         r_name = "Shomon kappo Sushi"
         r_genre = "Fine Seasonal Kappo & Omakase"
         r_usp = "秋の新作おまかせ2コース、松茸、本鮪"
 
     image_url, ad_copy = generate_creative_assets(r_name, r_genre, r_usp, r_loc, ctx)
 
-    reply_text = (
-        f"🎨 【Agent 2: Creative Studio 回答】\n"
+    reply_content = (
+        f"🍱 【Agent 2: Creative Studio 回答】\n"
         f"店舗: {r_name} ({r_genre})\n\n"
         f"📸 【生成画像 URL】:\n{image_url}\n\n"
-        f"✍️ 【広告コピー】:\n{ad_copy}"
+        f"✍️ 【Instagram 広告コピー】:\n{ad_copy}"
     )
 
-    await ctx.send(sender, ChatResponse(response=reply_text, image_url=image_url))
-    ctx.logger.info("💬 ASI:One へ対話レスポンスを返信しました。")
-
-agent.include(chat_proto)
+    await ctx.send(sender, TextResponse(text=reply_content))
+    ctx.logger.info("💬 ASI:One へ対話レスポンスを返信完了！")
 
 if __name__ == "__main__":
     agent.run()

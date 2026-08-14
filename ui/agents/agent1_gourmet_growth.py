@@ -11,18 +11,27 @@ agent = Agent(
 )
 
 # --------------------------------------------------
-# 📊 P2P データ通信用モデル定義
+# 🔄 P2P データ転送ハンドラー (on_message & on_query 両対応)
 # --------------------------------------------------
-class RestaurantInfo(Model):
-    name: str
-    genre: str
-    location: str
-    target: str
-    usp: str
-    issue: str
-    language: str
-    custom_image_url: str
-    bridge_url: str
+@agent.on_message(model=RestaurantInfo)
+async def handle_restaurant_info_msg(ctx: Context, sender: str, msg: RestaurantInfo):
+    ctx.logger.info(f"【Agent 1 受信】店舗データ受け取り: {msg.name} ({msg.genre})")
+    try:
+        await ctx.send(CREATIVE_STUDIO_ADDRESS, msg)
+        ctx.logger.info("Agent 2 (Creative Studio) へ P2P 転送完了。")
+    except Exception as e:
+        ctx.logger.error(f"Agent 2 転送エラー: {e}")
+
+@agent.on_query(model=RestaurantInfo)
+async def handle_restaurant_info_query(ctx: Context, sender: str, msg: RestaurantInfo):
+    ctx.logger.info(f"【Agent 1 Query受信】店舗データ受け取り: {msg.name} ({msg.genre})")
+    try:
+        await ctx.send(CREATIVE_STUDIO_ADDRESS, msg)
+        ctx.logger.info("Agent 2 (Creative Studio) へ P2P 転送完了。")
+        return ResponseMsg(status="success", message="Forwarded to Agent 2")
+    except Exception as e:
+        ctx.logger.error(f"Agent 2 転送エラー: {e}")
+        return ResponseMsg(status="error", message=str(e))
 
 class ResponseMsg(Model):
     status: str

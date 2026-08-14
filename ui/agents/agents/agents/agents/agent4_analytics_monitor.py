@@ -6,7 +6,7 @@ import sys
 import subprocess
 from uagents import Agent, Context, Model
 
-# ★ MeTTaの動的インポート（トップレベルでは print を使用）
+# ★ MeTTaの動的インポート
 try:
     import hyperon
 except ImportError:
@@ -39,6 +39,53 @@ SUPPORTED_LANGUAGES = {
     "Thai": "ไทย",
     "Vietnamese": "Tiếng Việt"
 }
+
+# ★ Ayrshare 経由で Instagram に自動投稿する関数
+def post_to_instagram_via_ayrshare(caption: str, image_url: str, ctx: Context = None) -> dict:
+    ayrshare_key = os.getenv("AYRSHARE_API_KEY", "").strip().strip('"').strip("'")
+    
+    if not ayrshare_key:
+        msg = "⚠️ AYRSHARE_API_KEY が Secrets に設定されていません。"
+        if ctx:
+            ctx.logger.warning(msg)
+        else:
+            print(msg)
+        return {"status": "error", "message": "Missing API Key"}
+
+    url = "https://app.ayrshare.com/api/post"
+    headers = {
+        "Authorization": f"Bearer {ayrshare_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "post": caption,
+        "platforms": ["instagram"],
+        "mediaUrls": [image_url]
+    }
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            msg = f"🎉 Instagram への自動投稿が完了しました！: {res_data}"
+            if ctx:
+                ctx.logger.info(msg)
+            else:
+                print(msg)
+            return res_data
+    except Exception as e:
+        msg = f"❌ Ayrshare 投稿エラー: {e}"
+        if ctx:
+            ctx.logger.error(msg)
+        else:
+            print(msg)
+        return {"status": "error", "message": str(e)}
 
 EXCLUDE_KEYWORDS = ["tts", "embedding", "imagen", "aqa", "bison"]
 
@@ -152,6 +199,15 @@ Tasks:
     current_cpa = 14.50
     final_analysis_text = audit_analytics_report(analysis_text, current_cpa)
     ctx.logger.info("【MeTTa 監査】アナリティクスレポートの論理検証完了。")
+
+    # ★ Instagram への自動パブリッシュ (Ayrshare 経由)
+    if msg.image_url and msg.ad_copy:
+        ctx.logger.info("Instagram への自動投稿を開始します...")
+        post_to_instagram_via_ayrshare(
+            caption=f"{msg.ad_copy}\n\n#NextFlowMarketing #AIAgent",
+            image_url=msg.image_url,
+            ctx=ctx
+        )
 
     # Bridge サーバーへ送信
     if msg.bridge_url:

@@ -1,12 +1,15 @@
 from uagents import Agent, Context, Model
 
+# ★ Agent 2 と完全同一にした CreativePayload
 class CreativePayload(Model):
+    campaign_id: str
     restaurant_name: str
     ad_copy: str
-    image_prompt: str
     image_url: str
     bridge_url: str
+    iteration: int = 1
 
+# ★ Agent 4 と完全同一にした DeploymentPayload
 class DeploymentPayload(Model):
     campaign_id: str
     restaurant_name: str
@@ -24,12 +27,10 @@ agent = Agent(
 
 @agent.on_message(model=CreativePayload)
 async def handle_creative(ctx: Context, sender: str, msg: CreativePayload):
-    ctx.logger.info(f"【Agent 3 受信】[{msg.restaurant_name}] クリエイティブ受け取り完了。")
-    
-    campaign_id = f"CAMP-{msg.restaurant_name[:3].upper()}-2026"
-    
+    ctx.logger.info(f"【Agent 3 受信】[{msg.restaurant_name}] クリエイティブ受け取り完了。(Bridge URL: {msg.bridge_url})")
+
     payload = DeploymentPayload(
-        campaign_id=campaign_id,
+        campaign_id=msg.campaign_id,
         restaurant_name=msg.restaurant_name,
         status="ACTIVE",
         image_url=msg.image_url,
@@ -38,7 +39,7 @@ async def handle_creative(ctx: Context, sender: str, msg: CreativePayload):
     )
 
     await ctx.send(ANALYTICS_MONITOR_ADDRESS, payload)
-    ctx.logger.info("Agent 4 (analytics-monitor) へ引き継ぎ完了。")
+    ctx.logger.info("✅ Agent 4 (analytics-monitor) へ DeploymentPayload 送信完了。")
 
 if __name__ == "__main__":
     agent.run()
